@@ -6,7 +6,7 @@
 1. 下载联想官方 Flash Tool 底包与官方 OTA 包；
 2. 把 OTA 增量包应用到 259 底包的分区镜像上；
 3. 按需重签 AVB（本仓库默认 **不重签**，见下文）；
-4. 用 7-Zip 最高压缩率打成 1900 MiB 分卷，作为 GitHub Release 附件发布。
+4. 用 7-Zip 最高压缩率打成单个 7z（≤10 GiB），作为 Actions artifact 上传。
 
 ## 数据来源
 
@@ -28,7 +28,7 @@ Actions → **TB322FC 259 → 358** → Run workflow：
 
 | 输入 | 默认 | 说明 |
 |---|---|---|
-| `tag` | `v358` | Release 标签，产物发布到这里 |
+| `tag` | `v358` | 仅用于 artifact 与日志的命名 |
 | `resign` | `false` | 是否在应用 OTA 后重签 AVB。259 → 358 官方包保持 `false` |
 | `key_name` | — | 已弃用：重签固定使用 `keys/testkey_rsa4096.pem`（或 `RESIGN_KEY_PEM` secret） |
 
@@ -51,15 +51,22 @@ dynobox apply --input <259 镜像目录> --output out --repack 20269121142256-91
 
 ## 产物
 
-Release 附件：
+构建完成后在 run 页面底部的 **Artifacts** 下载：
 
-- `TB322FC_259-358.7z.001` … 分卷（每卷 1900 MiB，GitHub 单附件上限 2 GiB）
-- `SHA256SUMS.txt`
-
-合并与解压：
+- `TB322FC_259-358`：`TB322FC_259-358.7z` + `SHA256SUMS.txt`（单文件，压缩后 <10 GiB）
+- 若压缩后 ≥10 GiB，自动切成 `part1/part2/part3` 三个 artifact（每份 ≤4.5 GiB），合并方式：
 
 ```bash
-cat TB322FC_259-358.7z.0* > TB322FC_259-358.7z
+cat chunk-aa chunk-ab chunk-ac > TB322FC_259-358.7z
+```
+
+- `logs`：`apply.log` 与 `verify.log`，保留 7 天
+
+artifact 保留 30 天，单个 artifact 上限 10 GiB，公共仓库不计存储配额。
+
+下载的 artifact 是 zip，解压后得到上面的文件：
+
+```bash
 7z x TB322FC_259-358.7z
 ```
 

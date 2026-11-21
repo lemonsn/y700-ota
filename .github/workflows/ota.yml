@@ -17,7 +17,7 @@ on:
         default: 'testkey_rsa4096'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: tb322fc-${{ inputs.tag }}
@@ -173,46 +173,70 @@ jobs:
           rm -rf "$RUNNER_TEMP/base"
           mkdir -p dist
           cd "$RUNNER_TEMP"
-          7zz a -t7z -mx=9 -ms=on -mmt=on -m0=lzma2 -v1900m \
+          7zz a -t7z -mx=9 -ms=on -mmt=on -m0=lzma2 \
             "$GITHUB_WORKSPACE/dist/TB322FC_259-358.7z" out -bso0 -bsp0
           cd "$GITHUB_WORKSPACE"
+          SIZE=$(stat -c %s dist/TB322FC_259-358.7z)
+          echo "archive size: $SIZE bytes"
+          # GitHub Actions caps one artifact at 10 GiB; split into <=4.5 GiB
+          # chunks (three artifacts cover up to 13.5 GiB) when the max-level
+          # archive does not fit.
+          if [ "$SIZE" -ge 10000000000 ]; then
+            echo "archive exceeds 10 GB; splitting into 4.5 GiB chunks"
+            split -b 4500M dist/TB322FC_259-358.7z dist/chunk-
+            rm -f dist/TB322FC_259-358.7z
+            if [ "$(ls dist/chunk-* | wc -l)" -gt 3 ]; then
+              echo "::error::archive too large for three artifacts; reduce the payload or raise the chunk count"
+              exit 1
+            fi
+          fi
+          (cd dist && sha256sum ./* > SHA256SUMS.txt && cat SHA256SUMS.txt)
           ls -lh dist
-          (cd dist && sha256sum ./*.7z.* > SHA256SUMS.txt && cat SHA256SUMS.txt)
           df -h /
 
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: logs-${{ inputs.tag }}
+          name: logs
           path: |
             ${{ runner.temp }}/apply.log
             ${{ runner.temp }}/verify.log
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
+      - name: Upload artifact (single archive)
+        if: hashFiles('dist/TB322FC_259-358.7z') != ''
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ inputs.tag }}
-          name: 'TB322FC 259 -> 358 (${{ inputs.tag }})'
-          fail_on_unmatched_files: true
-          files: dist/*
-          body: |
-            Y700 四代（TB322FC）官方 OTA 259 -> 358 的镜像产物。
+          name: TB322FC_259-358
+          path: dist/*
+          compression-level: 0
+          retention-days: 30
 
-            - 底包：TB322_ZUXOS_1.5.10.259_Tool.7z（10,219,346,474 B）
-            - OTA：20269121142256-9170.zip（319,935,310 B，A/B 增量，43 个分区）
-            - 处理：DynoBox v0.3.6 `apply --repack`，resign=${{ inputs.resign }}
-            - 产物：1900 MiB 分卷 7z + SHA256SUMS.txt
+      - name: Upload artifact (chunk 1)
+        if: hashFiles('dist/chunk-aa') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: TB322FC_259-358-part1
+          path: dist/chunk-aa
+          compression-level: 0
+          retention-days: 30
 
-            ### 使用
+      - name: Upload artifact (chunk 2)
+        if: hashFiles('dist/chunk-ab') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: TB322FC_259-358-part2
+          path: dist/chunk-ab
+          compression-level: 0
+          retention-days: 30
 
-            ```bash
-            cat TB322FC_259-358.7z.0* > TB322FC_259-358.7z
-            7z x TB322FC_259-358.7z
-            ```
-
-            ### 注意
-
-            ${{ inputs.resign && '已重签 AVB。设备 bootloader 必须接受新公钥（可能需要配套 abl.elf），否则拒绝启动。' || '未重签 AVB：分区内容已改变、签名仍是官方 259 的，AVB 摘要校验不通过属于预期，产物适合分析、二次修改或自行重签，不保证可直接启动。' }}
+      - name: Upload artifact (chunk 3)
+        if: hashFiles('dist/chunk-ac') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: TB322FC_259-358-part3
+          path: dist/chunk-ac
+          compression-level: 0
+          retention-days: 30
