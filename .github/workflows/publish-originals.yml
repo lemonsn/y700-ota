@@ -40,7 +40,7 @@ jobs:
           CHUNK_MB: ${{ inputs.chunk_mb }}
         run: |
           set -euo pipefail
-          mkdir -p dist
+          mkdir -p dist src
           CHUNK=$((CHUNK_MB * 1024 * 1024))
 
           fetch() {
@@ -57,7 +57,6 @@ jobs:
             df -h /
           }
 
-          mkdir -p src
           fetch "https://otanew-cdn.lenovo.com/firmware/20269121142256-9170.zip" 319935310 "20269121142256-9170.zip"
           fetch "http://zsk-cdn.lenovows.com/%E7%9F%A5%E8%AF%86%E5%BA%93/Flash_tool_image/TB322_ZUXOS_1.5.10.259_Tool.7z" 10219346474 "TB322_ZUXOS_1.5.10.259_Tool.7z"
           fetch "https://otanew-cdn.lenovo.com/firmware/20261012103144828-3974.zip" 11400239510 "20261012103144828-3974.zip"
@@ -72,27 +71,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cat > "$RUNNER_TEMP/notes.md" <<'EOF'
+          官方原始包，未做任何修改。
+
+          | 文件 | 说明 |
+          |---|---|
+          | `TB322_ZUXOS_1.5.10.259_Tool.7z.00*` | 259 Flash Tool 底包，**7z 密码 `FC(fv:SknR`** |
+          | `20269121142256-9170.zip` | 官方 OTA 259 → 358 |
+          | `20261012103144828-3974.zip.00*` | 官方 OTA 358 → 086（full 包，11.4 GB） |
+          | `SHA256SUMS.txt` | 所有分块与文件的 SHA-256 |
+
+          分块合并：
+
+          ```bash
+          cat TB322_ZUXOS_1.5.10.259_Tool.7z.0* > TB322_ZUXOS_1.5.10.259_Tool.7z
+          cat 20261012103144828-3974.zip.0* > 20261012103144828-3974.zip
+          ```
+          EOF
           gh release delete "${{ inputs.tag }}" --repo "${{ github.repository }}" --yes >/dev/null 2>&1 || true
           gh release create "${{ inputs.tag }}" dist/* \
             --repo "${{ github.repository }}" \
             --title "原始 OTA / 底包（259、259→358、358→086）" \
-            --notes "$(cat <<'EOF'
-官方原始包，未做任何修改。
-
-| 文件 | 说明 |
-|---|---|
-| TB322_ZUXOS_1.5.10.259_Tool.7z.00* | 259 Flash Tool 底包，**7z 密码 `FC(fv:SknR`** |
-| 20269121142256-9170.zip | 官方 OTA 259 → 358 |
-| 20261012103144828-3974.zip.00* | 官方 OTA 358 → 086（full 包，11.4 GB） |
-| SHA256SUMS.txt | 所有分块与文件的 SHA-256 |
-
-分块合并：
-
-```bash
-cat TB322_ZUXOS_1.5.10.259_Tool.7z.0* > TB322_ZUXOS_1.5.10.259_Tool.7z
-cat 20261012103144828-3974.zip.0* > 20261012103144828-3974.zip
-```
-EOF
-)"
+            --notes-file "$RUNNER_TEMP/notes.md"
           gh release view "${{ inputs.tag }}" --repo "${{ github.repository }}" --json assets \
             --jq '.assets[] | "\(.name) \(.size)"'
