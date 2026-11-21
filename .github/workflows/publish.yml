@@ -1,0 +1,70 @@
+name: Publish artifact as release
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_id:
+        description: 'Actions artifact id to publish'
+        required: true
+      tag:
+        description: 'Release tag'
+        required: true
+      title:
+        description: 'Release title (defaults to the tag)'
+        required: false
+        default: ''
+      note:
+        description: 'Release notes'
+        required: false
+        default: '未经aosp签名版'
+      chunk_mb:
+        description: 'Chunk size in MiB (must stay under the 2 GiB asset limit)'
+        required: false
+        default: '1500'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Download artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dl
+          cd dl
+          gh api "/repos/${{ github.repository }}/actions/artifacts/${{ inputs.artifact_id }}/zip" > artifact.zip
+          unzip -q artifact.zip
+          rm -f artifact.zip
+          ls -lh
+
+      - name: Split into chunks
+        run: |
+          cd dl
+          FILE=$(ls *.7z | head -1)
+          if [ -z "$FILE" ]; then echo "::error::no .7z inside the artifact"; exit 1; fi
+          SIZE=$(stat -c %s "$FILE")
+          LIMIT=$(( ${{ inputs.chunk_mb }} * 1024 * 1024 ))
+          echo "$FILE is $SIZE bytes; chunk limit $LIMIT"
+          if [ "$SIZE" -gt "$LIMIT" ]; then
+            split -b "$LIMIT" -d -a 3 --numeric-suffixes=1 "$FILE" "$FILE."
+            rm -f "$FILE"
+          fi
+          sha256sum ./* > SHA256SUMS.txt
+          ls -lh
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="${{ inputs.title }}"
+          [ -z "$TITLE" ] && TITLE="${{ inputs.tag }}"
+          gh release delete "${{ inputs.tag }}" --yes >/dev/null 2>&1 || true
+          gh release create "${{ inputs.tag }}" dl/* \
+            --title "$TITLE" \
+            --notes "${{ inputs.note }}"
+          gh release view "${{ inputs.tag }}" --json assets \
+            --jq '.assets[] | "\(.name) \(.size)"'
