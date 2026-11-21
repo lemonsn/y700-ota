@@ -62,7 +62,8 @@ jobs:
           fetch "https://otanew-cdn.lenovo.com/firmware/20261012103144828-3974.zip" 11400239510 "20261012103144828-3974.zip"
 
           cd dist
-          sha256sum ./* > SHA256SUMS.txt
+          rm -f SHA256SUMS.txt
+          sha256sum ./* | grep -v ' SHA256SUMS.txt$' > SHA256SUMS.txt
           cat SHA256SUMS.txt
           ls -lh
           du -sh .

@@ -21,6 +21,10 @@ on:
         description: 'Chunk size in MiB (must stay under the 2 GiB asset limit)'
         required: false
         default: '1500'
+      asset_name:
+        description: 'Rename the archive before splitting, without the .7z suffix (optional)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -42,10 +46,16 @@ jobs:
           ls -lh
 
       - name: Split into chunks
+        env:
+          ASSET_NAME: ${{ inputs.asset_name }}
         run: |
           cd dl
           FILE=$(ls *.7z | head -1)
           if [ -z "$FILE" ]; then echo "::error::no .7z inside the artifact"; exit 1; fi
+          if [ -n "$ASSET_NAME" ]; then
+            mv "$FILE" "$ASSET_NAME.7z"
+            FILE="$ASSET_NAME.7z"
+          fi
           SIZE=$(stat -c %s "$FILE")
           LIMIT=$(( ${{ inputs.chunk_mb }} * 1024 * 1024 ))
           echo "$FILE is $SIZE bytes; chunk limit $LIMIT"
@@ -53,7 +63,8 @@ jobs:
             split -b "$LIMIT" -d -a 3 --numeric-suffixes=1 "$FILE" "$FILE."
             rm -f "$FILE"
           fi
-          sha256sum ./* > SHA256SUMS.txt
+          rm -f SHA256SUMS.txt
+          sha256sum ./* | grep -v ' SHA256SUMS.txt$' > SHA256SUMS.txt
           ls -lh
 
       - name: Create release

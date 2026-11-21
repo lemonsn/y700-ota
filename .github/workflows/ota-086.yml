@@ -180,7 +180,7 @@ jobs:
               exit 1
             fi
           fi
-          (cd dist && sha256sum ./* > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          (cd dist && rm -f SHA256SUMS.txt && sha256sum ./* | grep -v ' SHA256SUMS.txt$' > SHA256SUMS.txt && cat SHA256SUMS.txt)
           ls -lh dist
           df -h /
 
