@@ -11,10 +11,6 @@ on:
         description: 'Re-sign AVB images (keep false for the official 259 -> 358 package)'
         type: boolean
         default: false
-      key_name:
-        description: 'Deprecated: the workflow signs with keys/testkey_rsa4096.pem (or the RESIGN_KEY_PEM secret)'
-        required: false
-        default: 'testkey_rsa4096'
 
 permissions:
   contents: read
@@ -33,7 +29,9 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    # ubuntu-latest still maps to 24.04 (glibc 2.39); the release binary needs
+    # GLIBC 2.43, so pin the 26.04 image instead of building from source.
+    runs-on: ubuntu-26.04
     timeout-minutes: 350
     steps:
       - name: Checkout
@@ -67,7 +65,7 @@ jobs:
           DYN=$(find tools -type f -name dynobox | head -1)
           chmod +x "$DYN"
           echo "DYNOBOX=$PWD/$DYN" >> "$GITHUB_ENV"
-          "$PWD/$DYN" --help | head -12
+          "$PWD/$DYN" --help | head -8
 
       - name: Download base firmware
         run: |

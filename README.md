@@ -30,7 +30,10 @@ Actions → **TB322FC 259 → 358** → Run workflow：
 |---|---|---|
 | `tag` | `v358` | 仅用于 run 备注，不参与产物命名 |
 | `resign` | `false` | 是否在应用 OTA 后重签 AVB。259 → 358 官方包保持 `false` |
-| `key_name` | — | 已弃用：重签固定使用 `keys/testkey_rsa4096.pem`（或 `RESIGN_KEY_PEM` secret） |
+
+工作流跑在 `ubuntu-26.04`（x86_64，glibc 2.43）。DynoBox 官方 v0.3.6 的 x86_64
+二进制链接了 `GLIBC_2.43`；`ubuntu-24.04`（也就是当前的 `ubuntu-latest`）只有 2.39，
+无法执行，所以不能用 `ubuntu-latest`。
 
 工作流实际执行的命令（与本地等价）：
 
