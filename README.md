@@ -28,7 +28,7 @@ Actions → **TB322FC 259 → 358** → Run workflow：
 
 | 输入 | 默认 | 说明 |
 |---|---|---|
-| `tag` | `v358` | 仅用于 artifact 与日志的命名 |
+| `tag` | `v358` | 仅用于 run 备注，不参与产物命名 |
 | `resign` | `false` | 是否在应用 OTA 后重签 AVB。259 → 358 官方包保持 `false` |
 | `key_name` | — | 已弃用：重签固定使用 `keys/testkey_rsa4096.pem`（或 `RESIGN_KEY_PEM` secret） |
 
