@@ -6,7 +6,7 @@
 1. 下载联想官方 Flash Tool 底包与官方 OTA 包；
 2. 把 OTA 增量包应用到 259 底包的分区镜像上；
 3. 按需重签 AVB（本仓库默认 **不重签**，见下文）；
-4. 用 7-Zip 最高压缩率打成单个 7z（≤10 GiB），作为 Actions artifact 上传。
+4. 用 7-Zip 最高压缩率打成单个 7z（LZMA2、256 MB 字典、273 fast bytes、64 GiB 固实块、2 线程），作为 Actions artifact 上传。
 
 ## 数据来源
 
