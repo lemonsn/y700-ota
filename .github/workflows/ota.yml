@@ -175,7 +175,7 @@ jobs:
           # 256 MB dictionary); `-mmt=1` buys a fraction of a percent at
           # 2-3x the wall time.
           7zz a -t7z -mx=9 -ms=64g -md=256m -mfb=273 -mmf=bt4 -mmc=1000000000 \
-            -mmt=2 -mqs=on \
+            -mmt=4 -mqs=on \
             "$GITHUB_WORKSPACE/dist/TB322FC_259-358.7z" out -bso0 -bsp0
           cd "$GITHUB_WORKSPACE"
           SIZE=$(stat -c %s dist/TB322FC_259-358.7z)
