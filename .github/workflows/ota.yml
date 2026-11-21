@@ -120,7 +120,9 @@ jobs:
       - name: Apply OTA
         run: |
           set -o pipefail
-          ARGS=(apply --input "$IMG_DIR" --output "$RUNNER_TEMP/out" --repack "$RUNNER_TEMP/ota.zip")
+          ARGS=(apply --input "$IMG_DIR" --output "$RUNNER_TEMP/out" --repack \
+            --integrity-key "$GITHUB_WORKSPACE/keys/integrity_ed25519.pem" \
+            "$RUNNER_TEMP/ota.zip")
           if [ "${{ inputs.resign }}" = "true" ]; then
             ARGS+=(--resign --key "$RUNNER_TEMP/resign_key.pem")
           fi
@@ -144,7 +146,9 @@ jobs:
       - name: Verify output
         run: |
           set +e
-          "$DYNOBOX" verify --input "$RUNNER_TEMP/out" 2>&1 | tee "$RUNNER_TEMP/verify.log"
+          "$DYNOBOX" verify --input "$RUNNER_TEMP/out" \
+            --trusted-integrity-key "$GITHUB_WORKSPACE/keys/integrity_ed25519.pub.pem" \
+            2>&1 | tee "$RUNNER_TEMP/verify.log"
           echo "VERIFY_EXIT=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
           exit 0
 

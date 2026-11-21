@@ -72,6 +72,15 @@ artifact 保留 30 天，单个 artifact 上限 10 GiB，公共仓库不计存�
 
 解压后是 Flash Tool 目录结构：物理分区 `*.img`、重打包的 `super_*.img` 分片和 `rawprogram*.xml`。
 
+产物清单里的 `dynobox-manifest.json` 由仓库自带的 Ed25519 清单签名密钥签：
+
+- 私钥 `keys/integrity_ed25519.pem`，公钥 `keys/integrity_ed25519.pub.pem`
+- key id：`003c0da06205af934cb69a287fccb3c379b756a7d60b9f53ea0f171929e09ef4`（原始 32 字节公钥的 SHA-256）
+- 校验：`dynobox verify --input out --trusted-integrity-key keys/integrity_ed25519.pub.pem`
+
+DynoBox 另外内置了 `andtabcus` 发布身份的公钥，只有公钥、无私钥；其他签名者必须在
+`verify` 时显式 pin 公钥才算 trusted。
+
 ## 关于 259 → 358 不重签
 
 官方 OTA 是增量包，DynoBox 应用后会改写 `system`/`product`/`vendor` 等分区内容，但
