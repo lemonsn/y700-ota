@@ -44,10 +44,11 @@ dynobox apply --input <259 镜像目录> --output out --repack 20269121142256-91
 --resign --key keys/testkey_rsa4096.pem
 ```
 
-仓库自带的 `keys/testkey_rsa4096.pem` 是 AOSP 公共测试密钥（4096 位 RSA，来自
-[showdo/AOSP-Testkey-BootSigner](https://github.com/showdo/AOSP-Testkey-BootSigner)），
-与 DynoBox/avbtool-rs 内置的 `testkey_rsa4096` 是同一把。需要换成自己的密钥时，
-配置仓库 Secret `RESIGN_KEY_PEM`（RSA 私钥 PEM），工作流会优先使用它。
+仓库自带的 `keys/testkey_rsa4096.pem` 取自
+[showdo/AOSP-Testkey-BootSigner](https://github.com/showdo/AOSP-Testkey-BootSigner/blob/main/tools/pem/testkey_rsa4096.pem)
+（4096 位 RSA，文件 SHA-256 `88bd0278559c5f54b709560987f2f5dd67f1afe42b2c6576a2d5fdf5fe0c6d69`），
+与 DynoBox/avbtool-rs 内置的 `testkey_rsa4096` 密钥材料相同（PKCS#1/CRLF 与 PKCS#8/LF 的编码差异）。
+工作流在 `resign=true` 时直接使用这份副本并校验哈希，不再支持外部 secret 覆盖。
 
 ## 产物
 

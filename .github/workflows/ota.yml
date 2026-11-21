@@ -104,17 +104,11 @@ jobs:
 
       - name: Prepare resign key
         if: inputs.resign
-        env:
-          KEY: ${{ secrets.RESIGN_KEY_PEM }}
         run: |
-          if [ -n "$KEY" ]; then
-            printf '%s\n' "$KEY" > "$RUNNER_TEMP/resign_key.pem"
-            echo "using the RESIGN_KEY_PEM secret"
-          else
-            cp keys/testkey_rsa4096.pem "$RUNNER_TEMP/resign_key.pem"
-            echo "using the bundled AOSP testkey_rsa4096"
-          fi
-          head -1 "$RUNNER_TEMP/resign_key.pem"
+          KEY=keys/testkey_rsa4096.pem
+          # Pinned copy of https://github.com/showdo/AOSP-Testkey-BootSigner/blob/main/tools/pem/testkey_rsa4096.pem
+          echo "88bd0278559c5f54b709560987f2f5dd67f1afe42b2c6576a2d5fdf5fe0c6d69  $KEY" | sha256sum -c -
+          cp "$KEY" "$RUNNER_TEMP/resign_key.pem"
           openssl rsa -in "$RUNNER_TEMP/resign_key.pem" -noout -text | head -1
 
       - name: Apply OTA
