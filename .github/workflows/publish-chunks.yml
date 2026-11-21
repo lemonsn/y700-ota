@@ -1,0 +1,119 @@
+name: Publish chunks as release
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_ids:
+        description: 'Comma-separated artifact ids, in order'
+        required: true
+      tag:
+        description: 'Release tag'
+        required: true
+      title:
+        description: 'Release title (defaults to the tag)'
+        required: false
+        default: ''
+      note:
+        description: 'Release notes'
+        required: false
+        default: '未经aosp签名版'
+      asset_name:
+        description: 'Archive base name, without .7z'
+        required: true
+      chunk_mb:
+        description: 'Chunk size in MiB'
+        required: false
+        default: '1500'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 200
+    steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Install 7-Zip
+        run: |
+          curl -fsSL --retry 5 -o /tmp/7z.tar.xz https://www.7-zip.org/a/7z2501-linux-x64.tar.xz
+          sudo tar -xJf /tmp/7z.tar.xz -C /usr/local/bin 7zz
+          sudo chmod 0755 /usr/local/bin/7zz
+          7zz | head -3
+          df -h /
+
+      - name: Download and reassemble
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET_NAME: ${{ inputs.asset_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p parts dist
+          IFS=',' read -ra IDS <<< "${{ inputs.artifact_ids }}"
+          for id in "${IDS[@]}"; do
+            id=$(echo "$id" | tr -d ' ')
+            echo "== artifact $id"
+            gh api "/repos/${{ github.repository }}/actions/artifacts/$id/zip" > "parts/$id.zip"
+            unzip -q -o "parts/$id.zip" -d "parts/$id"
+            rm -f "parts/$id.zip"
+            find "parts/$id" -type f -printf '%p %s\n'
+          done
+
+          : > concat.lst
+          for id in "${IDS[@]}"; do
+            id=$(echo "$id" | tr -d ' ')
+            find "parts/$id" -type f -name 'chunk-*' | sort >> concat.lst
+          done
+          echo "concatenation order:"; cat concat.lst
+          cat $(cat concat.lst) > "dist/$ASSET_NAME.7z"
+          rm -rf parts
+          ls -lh dist
+          df -h /
+
+      - name: Test archive
+        run: |
+          cd dist
+          7zz t "${{ inputs.asset_name }}.7z" | tail -5
+
+      - name: Split into chunks
+        env:
+          ASSET_NAME: ${{ inputs.asset_name }}
+          CHUNK_MB: ${{ inputs.chunk_mb }}
+        run: |
+          set -euo pipefail
+          cd dist
+          CHUNK=$((CHUNK_MB * 1024 * 1024))
+          FILE="$ASSET_NAME.7z"
+          SIZE=$(stat -c %s "$FILE")
+          echo "$FILE is $SIZE bytes; chunk limit $CHUNK"
+          split -b "$CHUNK" -d -a 3 --numeric-suffixes=1 "$FILE" "$FILE."
+          rm -f "$FILE"
+          rm -f SHA256SUMS.txt
+          sha256sum ./* | grep -v ' SHA256SUMS.txt$' > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          ls -lh
+          df -h /
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="${{ inputs.title }}"
+          [ -z "$TITLE" ] && TITLE="${{ inputs.tag }}"
+          gh release delete "${{ inputs.tag }}" --repo "${{ github.repository }}" --yes >/dev/null 2>&1 || true
+          gh release create "${{ inputs.tag }}" dist/* \
+            --repo "${{ github.repository }}" \
+            --title "$TITLE" \
+            --notes "${{ inputs.note }}"
+          gh release view "${{ inputs.tag }}" --repo "${{ github.repository }}" --json assets \
+            --jq '.assets[] | "\(.name) \(.size)"'
