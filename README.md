@@ -30,7 +30,7 @@ Actions → **TB322FC 259 → 358** → Run workflow：
 |---|---|---|
 | `tag` | `v358` | Release 标签，产物发布到这里 |
 | `resign` | `false` | 是否在应用 OTA 后重签 AVB。259 → 358 官方包保持 `false` |
-| `key_name` | `testkey_rsa4096` | `resign=true` 时传给 DynoBox `--key` 的密钥（内置名或路径） |
+| `key_name` | — | 已弃用：重签固定使用 `keys/testkey_rsa4096.pem`（或 `RESIGN_KEY_PEM` secret） |
 
 工作流实际执行的命令（与本地等价）：
 
@@ -41,10 +41,13 @@ dynobox apply --input <259 镜像目录> --output out --repack 20269121142256-91
 选中 `resign` 时追加：
 
 ```bash
---resign --key testkey_rsa4096
+--resign --key keys/testkey_rsa4096.pem
 ```
 
-重签需要仓库 Secret `RESIGN_KEY_PEM`（RSA 私钥 PEM），工作流会写入临时文件并传给 `--key`。
+仓库自带的 `keys/testkey_rsa4096.pem` 是 AOSP 公共测试密钥（4096 位 RSA，来自
+[showdo/AOSP-Testkey-BootSigner](https://github.com/showdo/AOSP-Testkey-BootSigner)），
+与 DynoBox/avbtool-rs 内置的 `testkey_rsa4096` 是同一把。需要换成自己的密钥时，
+配置仓库 Secret `RESIGN_KEY_PEM`（RSA 私钥 PEM），工作流会优先使用它。
 
 ## 产物
 

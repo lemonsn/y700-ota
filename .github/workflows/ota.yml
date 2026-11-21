@@ -12,7 +12,7 @@ on:
         type: boolean
         default: false
       key_name:
-        description: 'DynoBox --key value when resign=true (embedded name or path)'
+        description: 'Deprecated: the workflow signs with keys/testkey_rsa4096.pem (or the RESIGN_KEY_PEM secret)'
         required: false
         default: 'testkey_rsa4096'
 
@@ -107,23 +107,22 @@ jobs:
         env:
           KEY: ${{ secrets.RESIGN_KEY_PEM }}
         run: |
-          if [ -z "$KEY" ]; then
-            echo "::error::resign=true but the RESIGN_KEY_PEM secret is not configured"
-            exit 1
+          if [ -n "$KEY" ]; then
+            printf '%s\n' "$KEY" > "$RUNNER_TEMP/resign_key.pem"
+            echo "using the RESIGN_KEY_PEM secret"
+          else
+            cp keys/testkey_rsa4096.pem "$RUNNER_TEMP/resign_key.pem"
+            echo "using the bundled AOSP testkey_rsa4096"
           fi
-          printf '%s\n' "$KEY" > "$RUNNER_TEMP/resign_key.pem"
           head -1 "$RUNNER_TEMP/resign_key.pem"
+          openssl rsa -in "$RUNNER_TEMP/resign_key.pem" -noout -text | head -1
 
       - name: Apply OTA
         run: |
           set -o pipefail
           ARGS=(apply --input "$IMG_DIR" --output "$RUNNER_TEMP/out" --repack "$RUNNER_TEMP/ota.zip")
           if [ "${{ inputs.resign }}" = "true" ]; then
-            if [ -s "$RUNNER_TEMP/resign_key.pem" ]; then
-              ARGS+=(--resign --key "$RUNNER_TEMP/resign_key.pem")
-            else
-              ARGS+=(--resign --key "${{ inputs.key_name }}")
-            fi
+            ARGS+=(--resign --key "$RUNNER_TEMP/resign_key.pem")
           fi
           echo "dynobox ${ARGS[*]}"
           set +e
