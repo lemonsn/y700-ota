@@ -1,7 +1,7 @@
 # y700-ota — Y700 四代（TB322FC）OTA 与重签工作流
 
 用 [DynoBox](https://github.com/miner7222/DynoBox) v0.3.6 的官方二进制，在 GitHub Actions
-（`ubuntu-24.04`，x86_64）上完成：
+（`ubuntu-26.04`，x86_64）上完成：
 
 1. 下载联想官方 Flash Tool 底包与官方 OTA 包；
 2. 把 OTA 增量包应用到 259 底包的分区镜像上；
@@ -13,9 +13,11 @@
 | 用途 | 地址 | 大小 / 校验 |
 |---|---|---|
 | 底包 259（Flash Tool 镜像） | `http://zsk-cdn.lenovows.com/知识库/Flash_tool_image/TB322_ZUXOS_1.5.10.259_Tool.7z` | 10,219,346,474 B；7z 密码 `FC(fv:SknR` |
-| 官方 OTA 259 → 358 | `https://otanew-cdn.lenovo.com/firmware/20269121142256-9170.zip` | 319,935,310 B；A/B 增量包，43 个分区 |
+| 官方 OTA 259 → 358（9170） | `https://otanew-cdn.lenovo.com/firmware/20269121142256-9170.zip` | 319,935,310 B；A/B 增量包，43 个分区 |
+| 官方 OTA 358 → 086（3974） | `https://otanew-cdn.lenovo.com/firmware/20261012103144828-3974.zip` | 11,400,239,510 B；full 包 |
+| 官方 OTA 358 → 018（1534） | `https://otanew-cdn.lenovo.com/firmware/20261111112627152-1534.zip` | 11,326,230,438 B；full 包 |
 
-OTA 包自带的元数据：
+9170 包自带的元数据：
 
 - `pre-device=TB322FC`
 - `pre-build-incremental=TB322FC_CN_OPEN_USER_Q00041.1_W_ZUXOS_1.5.10.259_ST_260611`
@@ -29,7 +31,24 @@ Actions → **TB322FC 259 → 358** → Run workflow：
 | 输入 | 默认 | 说明 |
 |---|---|---|
 | `tag` | `v358` | 仅用于 run 备注，不参与产物命名 |
-| `resign` | `false` | 是否在应用 OTA 后重签 AVB。259 → 358 官方包保持 `false` |
+| `resign` | `false` | 是否在应用 OTA 后重签 AVB。官方包保持 `false` |
+
+三个构建工作流：
+
+| 工作流 | 作用 |
+|---|---|
+| `ota.yml` | 259 底包 + 9170 → 358 |
+| `ota-086.yml` | 358 底包 + 3974 → 086 |
+| `ota-next.yml` | 358 底包 + 指定 OTA → 任意版本（`version` 输入决定命名），018 用它 |
+
+发布工作流：
+
+| 工作流 | 作用 |
+|---|---|
+| `publish.yml` | 单个 artifact → 分块 → Release（可 `asset_name` 改名） |
+| `publish-chunks.yml` | 多个 artifact 拼回 → 校验 → 重切 → Release |
+| `publish-originals.yml` | 三个原始包一次发布 |
+| `publish-ota-package.yml` | 把某个 OTA 原包追加到已有 Release |
 
 工作流跑在 `ubuntu-26.04`（x86_64，glibc 2.43）。DynoBox 官方 v0.3.6 的 x86_64
 二进制链接了 `GLIBC_2.43`；`ubuntu-24.04`（也就是当前的 `ubuntu-latest`）只有 2.39，
@@ -53,28 +72,39 @@ dynobox apply --input <259 镜像目录> --output out --repack 20269121142256-91
 与 DynoBox/avbtool-rs 内置的 `testkey_rsa4096` 密钥材料相同（PKCS#1/CRLF 与 PKCS#8/LF 的编码差异）。
 工作流在 `resign=true` 时直接使用这份副本并校验哈希，不再支持外部 secret 覆盖。
 
-## 产物
+## 已发布的 Release
 
-构建完成后在 run 页面底部的 **Artifacts** 下载：
+| Release | 内容 | 资产 |
+|---|---|---|
+| `v358-unsigned` | 358 镜像集（259 底包 + 9170 增量 OTA） | `TB322FC_358_images.7z.001`–`.007` + `SHA256SUMS.txt`，9.2 GiB |
+| `v086-unsigned` | 086 镜像集（358 底包 + 3974 full OTA） | `TB322FC_086_images.7z.001`–`.007` + `SHA256SUMS.txt`，9.97 GiB |
+| `v018-unsigned` | 018 镜像集（358 底包 + 1534 full OTA） | `TB322FC_018_images.7z.001`–`.007` + `SHA256SUMS.txt`，9.89 GiB |
+| `originals` | 官方原始包，未改动 | 259 底包 7 块、`20269121142256-9170.zip`、086 OTA 8 块、018 OTA 8 块，共 30.98 GiB |
 
-- `TB322FC_259-358`：`TB322FC_259-358.7z` + `SHA256SUMS.txt`（单文件，压缩后 <10 GiB）
-- 若压缩后 ≥10 GiB，自动切成 `part1/part2/part3` 三个 artifact（每份 ≤4.5 GiB），合并方式：
-
-```bash
-cat chunk-aa chunk-ab chunk-ac > TB322FC_259-358.7z
-```
-
-- `logs`：`apply.log` 与 `verify.log`，保留 7 天
-
-artifact 保留 30 天，单个 artifact 上限 10 GiB，公共仓库不计存储配额。
-
-下载的 artifact 是 zip，解压后得到上面的文件：
+三个镜像集都是「不重签」状态。合并与解压：
 
 ```bash
-7z x TB322FC_259-358.7z
+cat TB322FC_358_images.7z.0* > TB322FC_358_images.7z
+7z x TB322FC_358_images.7z
+
+# 259 底包带密码
+cat TB322_ZUXOS_1.5.10.259_Tool.7z.0* > TB322_ZUXOS_1.5.10.259_Tool.7z
+7z x -p'FC(fv:SknR' TB322_ZUXOS_1.5.10.259_Tool.7z
 ```
 
-解压后是 Flash Tool 目录结构：物理分区 `*.img`、重打包的 `super_*.img` 分片和 `rawprogram*.xml`。
+官方包对应关系：9170 = 259 → 358（增量，305 MB）、3974 = 358 → 086（full，11.40 GB）、
+1534 = 358 → 018（full，11.33 GB）。
+
+## 构建产物（Artifacts）
+
+构建 run 页面底部的 **Artifacts** 里是中间产物，保留 30 天；发布到 Release 的是仓库里的长期副本。
+
+- 压缩后 <10 GiB 时上传单个 artifact（含 `*.7z` 与 `SHA256SUMS.txt`）
+- ≥10 GiB 时切成 `part1/part2/part3` 三个 artifact（每份 ≤4.5 GiB），用 `publish-chunks`
+  工作流拼回并重新按 1.5 GiB 分块发布
+- `logs`：`apply*.log` 与 `verify*.log`，保留 7 天
+
+单个 artifact 上限 10 GiB，公共仓库不计存储配额。
 
 产物清单里的 `dynobox-manifest.json` 由仓库自带的 Ed25519 清单签名密钥签：
 
