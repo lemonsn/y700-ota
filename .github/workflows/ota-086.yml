@@ -162,6 +162,7 @@ jobs:
           df -h /
 
       - name: Compress with 7-Zip (max)
+        id: compress
         run: |
           mkdir -p dist
           cd "$RUNNER_TEMP"
@@ -169,10 +170,12 @@ jobs:
             -mmt=4 -mqs=on \
             "$GITHUB_WORKSPACE/dist/TB322FC_358-086.7z" out086 -bso0 -bsp0
           cd "$GITHUB_WORKSPACE"
+          SPLIT=false
           SIZE=$(stat -c %s dist/TB322FC_358-086.7z)
           echo "archive size: $SIZE bytes"
           if [ "$SIZE" -ge 10000000000 ]; then
             echo "archive exceeds 10 GB; splitting into 4.5 GiB chunks"
+            SPLIT=true
             split -b 4500M dist/TB322FC_358-086.7z dist/chunk-
             rm -f dist/TB322FC_358-086.7z
             if [ "$(ls dist/chunk-* | wc -l)" -gt 3 ]; then
@@ -180,6 +183,7 @@ jobs:
               exit 1
             fi
           fi
+          echo "split=$SPLIT" >> "$GITHUB_OUTPUT"
           (cd dist && rm -f SHA256SUMS.txt && sha256sum ./* | grep -v ' SHA256SUMS.txt$' > SHA256SUMS.txt && cat SHA256SUMS.txt)
           ls -lh dist
           df -h /
@@ -196,7 +200,7 @@ jobs:
           retention-days: 7
 
       - name: Upload artifact (single archive)
-        if: hashFiles('dist/TB322FC_358-086.7z') != ''
+        if: steps.compress.outputs.split == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: TB322FC_358-086
@@ -205,7 +209,7 @@ jobs:
           retention-days: 30
 
       - name: Upload artifact (chunk 1)
-        if: hashFiles('dist/chunk-aa') != ''
+        if: steps.compress.outputs.split == 'true' && hashFiles('dist/chunk-aa') != ''
         uses: actions/upload-artifact@v4
         with:
           name: TB322FC_358-086-part1
@@ -214,7 +218,7 @@ jobs:
           retention-days: 30
 
       - name: Upload artifact (chunk 2)
-        if: hashFiles('dist/chunk-ab') != ''
+        if: steps.compress.outputs.split == 'true' && hashFiles('dist/chunk-ab') != ''
         uses: actions/upload-artifact@v4
         with:
           name: TB322FC_358-086-part2
@@ -223,7 +227,7 @@ jobs:
           retention-days: 30
 
       - name: Upload artifact (chunk 3)
-        if: hashFiles('dist/chunk-ac') != ''
+        if: steps.compress.outputs.split == 'true' && hashFiles('dist/chunk-ac') != ''
         uses: actions/upload-artifact@v4
         with:
           name: TB322FC_358-086-part3
