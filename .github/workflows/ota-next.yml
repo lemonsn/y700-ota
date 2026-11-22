@@ -1,0 +1,236 @@
+name: TB322FC 358 -> OTA
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Target build label used in artifact and archive names'
+        required: true
+        default: '018'
+      artifact_id:
+        description: 'Artifact id holding the 358 base (TB322FC_259-358.7z)'
+        required: true
+        default: '14694619219'
+      ota_url:
+        description: 'Target OTA zip URL'
+        required: true
+        default: 'https://otanew-cdn.lenovo.com/firmware/20261111112627152-1534.zip'
+      ota_size:
+        description: 'Target OTA zip size in bytes'
+        required: true
+        default: '11326230438'
+      resign:
+        description: 'Re-sign AVB (keep false for the official package)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tb322fc-next
+  cancel-in-progress: false
+
+env:
+  DYNOBOX_URL: 'https://github.com/miner7222/DynoBox/releases/download/v0.3.6/DynoBox-linux_x86_64-v0.3.6.tar.gz'
+  DYNOBOX_SHA256: '8f51fdddabfb99f739225713a83e47533595ad8685eb0acc9bdc9a7efc868448'
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Install 7-Zip
+        run: |
+          curl -fsSL --retry 5 -o /tmp/7z.tar.xz https://www.7-zip.org/a/7z2501-linux-x64.tar.xz
+          sudo tar -xJf /tmp/7z.tar.xz -C /usr/local/bin 7zz
+          sudo chmod 0755 /usr/local/bin/7zz
+          7zz | head -3
+          df -h /
+
+      - name: Download DynoBox
+        run: |
+          mkdir -p tools
+          curl -fsSL --retry 10 -o tools/dynobox.tar.gz "$DYNOBOX_URL"
+          echo "$DYNOBOX_SHA256  tools/dynobox.tar.gz" | sha256sum -c -
+          tar -xzf tools/dynobox.tar.gz -C tools
+          DYN=$(find tools -type f -name dynobox | head -1)
+          chmod +x "$DYN"
+          echo "DYNOBOX=$PWD/$DYN" >> "$GITHUB_ENV"
+
+      - name: Fetch 358 base artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p base_dl
+          cd base_dl
+          gh api "/repos/${{ github.repository }}/actions/artifacts/${{ inputs.artifact_id }}/zip" > artifact.zip
+          unzip -q artifact.zip
+          ls -lh
+          ARCH=$(ls *.7z | head -1)
+          test -n "$ARCH"
+          7zz x -y -o"$RUNNER_TEMP/base358" "$ARCH" -bso0 -bsp0
+          cd ..
+          rm -rf base_dl
+          IMG_DIR=$(find "$RUNNER_TEMP/base358" -name 'rawprogram*.xml' -printf '%h\n' | sort -u | head -1)
+          if [ -z "$IMG_DIR" ]; then echo "::error::no rawprogram XML in the 358 artifact"; exit 1; fi
+          echo "IMG_DIR=$IMG_DIR" >> "$GITHUB_ENV"
+          echo "base image dir: $IMG_DIR"
+          ls -lh "$IMG_DIR" | head -40
+          df -h /
+
+      - name: Download 086 OTA
+        run: |
+          curl -fL --retry 20 --retry-all-errors --retry-delay 5 -C - -o "$RUNNER_TEMP/ota-next.zip" "${{ inputs.ota_url }}"
+          test "$(stat -c %s "$RUNNER_TEMP/ota-next.zip")" = "${{ inputs.ota_size }}"
+          sha256sum "$RUNNER_TEMP/ota-next.zip"
+          df -h /
+
+      - name: Prepare resign key
+        if: inputs.resign
+        run: |
+          KEY=keys/testkey_rsa4096.pem
+          echo "88bd0278559c5f54b709560987f2f5dd67f1afe42b2c6576a2d5fdf5fe0c6d69  $KEY" | sha256sum -c -
+          cp "$KEY" "$RUNNER_TEMP/resign_key.pem"
+
+      - name: Apply 086 OTA
+        run: |
+          set -o pipefail
+          ARGS=(apply --input "$IMG_DIR" --output "$RUNNER_TEMP/out-next" --repack \
+            --integrity-key "$GITHUB_WORKSPACE/keys/integrity_ed25519.pem" \
+            "$RUNNER_TEMP/ota-next.zip")
+          if [ "${{ inputs.resign }}" = "true" ]; then
+            ARGS+=(--resign --key "$RUNNER_TEMP/resign_key.pem")
+          fi
+          echo "dynobox ${ARGS[*]}"
+          set +e
+          "$DYNOBOX" "${ARGS[@]}" 2>&1 | tee "$RUNNER_TEMP/apply-next.log"
+          CODE=${PIPESTATUS[0]}
+          set -e
+          echo "APPLY_EXIT=$CODE" >> "$GITHUB_ENV"
+          if [ "$CODE" -ne 0 ]; then
+            if [ "${{ inputs.resign }}" = "true" ] || ! grep -q "Verification failed" "$RUNNER_TEMP/apply-next.log"; then
+              echo "::error::dynobox apply failed with exit code $CODE"
+              exit "$CODE"
+            fi
+            echo "::warning::apply exited $CODE on AVB verification only (expected without --resign)"
+          fi
+          test -d "$RUNNER_TEMP/out-next"
+
+      - name: Verify 086 output
+        run: |
+          set +e
+          "$DYNOBOX" verify --input "$RUNNER_TEMP/out-next" \
+            --trusted-integrity-key "$GITHUB_WORKSPACE/keys/integrity_ed25519.pub.pem" \
+            2>&1 | tee "$RUNNER_TEMP/verify-next.log"
+          echo "VERIFY_EXIT=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Summarize
+        run: |
+          {
+            echo "## TB322FC 358 -> ${{ inputs.version }}"
+            echo ""
+            echo "- base artifact: \`${{ inputs.artifact_id }}\`"
+            echo "- OTA: \`${{ inputs.ota_url }}\`"
+            echo "- resign: \`${{ inputs.resign }}\`"
+            echo "- apply exit: \`${APPLY_EXIT}\`, verify exit: \`${VERIFY_EXIT:-skipped}\`"
+            echo ""
+            echo "### Output inventory"
+            echo '```'
+            ls -lh "$RUNNER_TEMP/out-next" | head -60
+            echo '```'
+            echo ""
+            echo "### Apply tail"
+            echo '```'
+            tail -n 20 "$RUNNER_TEMP/apply-next.log" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Free intermediate data
+        run: |
+          rm -rf "$RUNNER_TEMP/base358" "$RUNNER_TEMP/ota-next.zip"
+          df -h /
+
+      - name: Compress with 7-Zip (max)
+        run: |
+          mkdir -p dist
+          cd "$RUNNER_TEMP"
+          7zz a -t7z -mx=9 -ms=64g -md=256m -mfb=273 -mmf=bt4 -mmc=1000000000 \
+            -mmt=4 -mqs=on \
+            "$GITHUB_WORKSPACE/dist/TB322FC_${{ inputs.version }}_images.7z" out-next -bso0 -bsp0
+          cd "$GITHUB_WORKSPACE"
+          SIZE=$(stat -c %s dist/TB322FC_${{ inputs.version }}_images.7z)
+          echo "archive size: $SIZE bytes"
+          if [ "$SIZE" -ge 10000000000 ]; then
+            echo "archive exceeds 10 GB; splitting into 4.5 GiB chunks"
+            split -b 4500M dist/TB322FC_${{ inputs.version }}_images.7z dist/chunk-
+            rm -f dist/TB322FC_${{ inputs.version }}_images.7z
+            if [ "$(ls dist/chunk-* | wc -l)" -gt 3 ]; then
+              echo "::error::archive too large for three artifacts"
+              exit 1
+            fi
+          fi
+          (cd dist && rm -f SHA256SUMS.txt && sha256sum ./* | grep -v ' SHA256SUMS.txt$' > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          ls -lh dist
+          df -h /
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ inputs.version }}
+          path: |
+            ${{ runner.temp }}/apply-next.log
+            ${{ runner.temp }}/verify-next.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload artifact (single archive)
+        if: hashFiles('dist/TB322FC_${{ inputs.version }}_images.7z') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: TB322FC_${{ inputs.version }}_images
+          path: dist/*
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload artifact (chunk 1)
+        if: hashFiles('dist/chunk-aa') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: TB322FC_${{ inputs.version }}_images-part1
+          path: dist/chunk-aa
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload artifact (chunk 2)
+        if: hashFiles('dist/chunk-ab') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: TB322FC_${{ inputs.version }}_images-part2
+          path: dist/chunk-ab
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload artifact (chunk 3)
+        if: hashFiles('dist/chunk-ac') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: TB322FC_${{ inputs.version }}_images-part3
+          path: dist/chunk-ac
+          compression-level: 0
+          retention-days: 30
