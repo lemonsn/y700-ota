@@ -13,9 +13,9 @@
 | 用途 | 地址 | 大小 / 校验 |
 |---|---|---|
 | 底包 259（Flash Tool 镜像） | `http://zsk-cdn.lenovows.com/知识库/Flash_tool_image/TB322_ZUXOS_1.5.10.259_Tool.7z` | 10,219,346,474 B；7z 密码 `FC(fv:SknR` |
-| 官方 OTA 259 → 358（9170） | `https://otanew-cdn.lenovo.com/firmware/20269121142256-9170.zip` | 319,935,310 B；A/B 增量包，43 个分区 |
-| 官方 OTA 358 → 086（3974） | `https://otanew-cdn.lenovo.com/firmware/20261012103144828-3974.zip` | 11,400,239,510 B；full 包 |
-| 官方 OTA 358 → 018（1534） | `https://otanew-cdn.lenovo.com/firmware/20261111112627152-1534.zip` | 11,326,230,438 B；full 包 |
+| 官方 OTA 259 → 358（9170） | `https://otanew-cdn.lenovo.com/firmware/20269121142256-9170.zip` | 319,935,310 B；A/B 增量包，43 个分区；目标 1.5.10.358_ST |
+| 官方 OTA 358 → 086（3974） | `https://otanew-cdn.lenovo.com/firmware/20261012103144828-3974.zip` | 11,400,239,510 B；full 包；目标 **2.5.02.086_DEV**，Android 17 |
+| 官方 OTA 358 → 018（1534） | `https://otanew-cdn.lenovo.com/firmware/20261111112627152-1534.zip` | 11,326,230,438 B；full 包；目标 **2.5.10.018_ST**，Android 17 |
 
 9170 包自带的元数据：
 
@@ -74,12 +74,16 @@ dynobox apply --input <259 镜像目录> --output out --repack 20269121142256-91
 
 ## 已发布的 Release
 
-| Release | 内容 | 资产 |
-|---|---|---|
-| `v358-unsigned` | 358 镜像集（259 底包 + 9170 增量 OTA） | `TB322FC_358_images.7z.001`–`.007` + `SHA256SUMS.txt`，9.2 GiB |
-| `v086-unsigned` | 086 镜像集（358 底包 + 3974 full OTA） | `TB322FC_086_images.7z.001`–`.007` + `SHA256SUMS.txt`，9.97 GiB |
-| `v018-unsigned` | 018 镜像集（358 底包 + 1534 full OTA） | `TB322FC_018_images.7z.001`–`.007` + `SHA256SUMS.txt`，9.89 GiB |
-| `originals` | 官方原始包，未改动 | 259 底包 7 块、`20269121142256-9170.zip`、086 OTA 8 块、018 OTA 8 块，共 30.98 GiB |
+| Release | 目标版本 | 渠道 | Android / SDK | SPL | 资产 |
+|---|---|---|---|---|---|
+| `v358-unsigned` | 2.5.10.358 | ST | 16 / 36 | 2026-07-05 | `TB322FC_358_images.7z.001`–`.007` + `SHA256SUMS.txt`，9.2 GiB |
+| `v086-unsigned` | **2.5.02.086** | **DEV** | 17 / 37 | 2026-09-05 | `TB322FC_086_images.7z.001`–`.007` + `SHA256SUMS.txt`，9.97 GiB |
+| `v018-unsigned` | **2.5.10.018** | **ST** | 17 / 37 | 2026-11-05 | `TB322FC_018_images.7z.001`–`.007` + `SHA256SUMS.txt`，9.89 GiB |
+| `originals` | — | — | — | — | 259 底包 7 块、`20269121142256-9170.zip`、086 OTA 8 块、018 OTA 8 块，共 30.98 GiB |
+
+版本关系：259、358 是 Android 16 的 ZUXOS 1.5.10 ST；086 是 Android 17 的 ZUXOS 2.5.02 **DEV**
+开发版；018 是 Android 17 的 ZUXOS 2.5.10 **ST** 稳定版，比 086 更新（2.5.10 > 2.5.02，
+SPL 2026-11-05 > 2026-09-05）。086 与 018 都是 full 包，都从 358 底包应用。
 
 三个镜像集都是「不重签」状态。合并与解压：
 
@@ -92,8 +96,8 @@ cat TB322_ZUXOS_1.5.10.259_Tool.7z.0* > TB322_ZUXOS_1.5.10.259_Tool.7z
 7z x -p'FC(fv:SknR' TB322_ZUXOS_1.5.10.259_Tool.7z
 ```
 
-官方包对应关系：9170 = 259 → 358（增量，305 MB）、3974 = 358 → 086（full，11.40 GB）、
-1534 = 358 → 018（full，11.33 GB）。
+官方包对应关系：9170 = 259 → 358（增量，305 MB、1.5.10.358_ST）、
+3974 = 358 → 086（full，11.40 GB、2.5.02.086_DEV）、1534 = 358 → 018（full，11.33 GB、2.5.10.018_ST）。
 
 ## 构建产物（Artifacts）
 
